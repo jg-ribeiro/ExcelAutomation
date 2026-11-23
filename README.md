@@ -10,6 +10,46 @@ O serviço deve executar usando a conta de domínio dedicada:
 USACUCAR2000\svc_giautomacao
 ```
 
+---
+
+## Camada de Segurança e Resiliência
+
+A aplicação conta com uma camada de segurança projetada para impedir travamentos e bloqueios de arquivos:
+
+1. **Eliminação Garantida de Processos Zumbis**:
+   - Cada instância criada via COM tem seu PID do Windows capturado imediatamente.
+   - O encerramento ocorre via Context Manager (`ExcelSession`).
+   - Se o Excel não encerrar normalmente após o grace period (15s), o script executa `kill` forçado **apenas naquele PID específico**.
+2. **Atualização Síncrona das Consultas**:
+   - As conexões Power Query / OLEDB / ODBC têm `BackgroundQuery` forçado para `False`.
+   - Isso elimina qualquer risco de a macro `SalvarTodos` rodar antes do término da atualização dos dados.
+3. **Proteção de Timeout nas Consultas**:
+   - Se a atualização das consultas exceder o tempo limite configurado (`QUERY_REFRESH_TIMEOUT`), a aplicação aborta e elimina o processo, impedindo congelamento por problemas de rede ou banco.
+4. **Guarda de Bloqueio de Arquivo (`file_guard`)**:
+   - Antes de iniciar, verifica se o workbook de rede está livre para gravação. Se outro usuário ou processo estiver com o arquivo aberto, aguarda com retry ou emite diagnóstico claro com o nome do usuário.
+5. **Supressão de Diálogos Modais**:
+   - Além de `DisplayAlerts = False` e `Interactive = False`, uma thread monitora e descarta caixas de diálogo modais invisíveis (`#32770`).
+6. **Blindagem do Agendador**:
+   - Falhas ou exceções em uma execução diária são capturadas e logadas sem interromper o serviço do `scheduler.py` para os dias seguintes.
+
+---
+
+## Estrutura do Projeto
+
+```text
+ExcelAutomationVM/
+├── config.py             # Configurações centralizadas (caminhos, timeouts, horários)
+├── excel_manager.py      # Gerenciador de ciclo de vida do Excel (PID, ContextManager, Kill)
+├── file_guard.py         # Verificação de locks de arquivo e detecção de proprietários
+├── runner.py             # Rotina principal de execução com todas as proteções
+├── mock_simple.py        # Módulo de compatibilidade (redireciona para runner.py)
+├── scheduler.py          # Agendador resiliente diário com heartbeats
+├── requirements.txt      # Dependências (pywin32, schedule)
+└── README.md             # Esta documentação
+```
+
+---
+
 ## Pré-requisitos
 
 - Microsoft Excel instalado e licenciado na VM.
@@ -21,23 +61,38 @@ USACUCAR2000\svc_giautomacao
 - A conta deve possuir o direito local **Log on as a service**, pois o NSSM a
   utiliza para executar o processo.
 
+---
+
 ## Configuração do serviço no NSSM
 
 No NSSM, configure o serviço para iniciar o interpretador Python do ambiente
-virtual e informe o módulo/script da automação como argumento. Em **Log on**,
-selecione a conta:
+virtual e informe o script `scheduler.py` (ou `runner.py`) como argumento:
+
+- **Path**: `C:\Auteq\ExcelAutomationVM\.venv\Scripts\python.exe`
+- **Startup directory**: `C:\Auteq\ExcelAutomationVM`
+- **Arguments**: `scheduler.py`
+
+Em **Log on**, selecione a conta:
 
 ```text
 USACUCAR2000\svc_giautomacao
 ```
 
-Use a senha vigente da conta e configure o diretório de trabalho como a pasta
-da aplicação. O mais importante é que o processo Python e o Excel criado por
-ele tenham uma identidade coerente: a conta do serviço deve ser a mesma conta
-autorizada no DCOM.
+---
 
-Após alterar a identidade, senha ou permissões da conta, reinicie o serviço
-NSSM antes de testar novamente.
+## Execução Manual e Testes
+
+Para testar a automação manualmente via terminal a qualquer momento:
+
+```powershell
+# Executa a rotina imediatamente
+.\.venv\Scripts\python.exe runner.py
+
+# Ou inicia o scheduler executando um ciclo de imediato para teste
+.\.venv\Scripts\python.exe scheduler.py --now
+```
+
+---
 
 ## Permissões DCOM do Excel
 
@@ -72,74 +127,10 @@ Em **Access Permissions**, também selecione **Customize** e clique em
 
 - Local Access
 
-Como o Python e o Excel rodam na mesma VM, as permissões locais são as
-necessárias. Permissões remotas só são necessárias se a ativação COM vier de
-outra máquina.
-
 ### Identity
 
-Em **Identity**, use uma das opções abaixo:
-
+Em **Identity**, use:
 - **The launching user**: recomendada quando o processo iniciado pelo NSSM já
   roda como `USACUCAR2000\svc_giautomacao`.
 - **This user**: alternativa para forçar o Excel a sempre iniciar com
-  `USACUCAR2000\svc_giautomacao`; informe usuário e senha atualizados.
-
-Não use **The interactive user** neste cenário. Um Windows Service não dispõe
-de uma sessão de desktop interativa confiável.
-
-### Limites globais do DCOM
-
-Se a configuração específica do Excel não resolver, verifique os limites da
-máquina em:
-
-```text
-Component Services
-  > Computers
-  > My Computer
-  > Properties
-  > COM Security
-  > Launch and Activation Permissions
-  > Edit Limits
-```
-
-Adicione `USACUCAR2000\svc_giautomacao` e permita **Local Launch** e
-**Local Activation**. Esses limites têm precedência e podem bloquear a
-ativação mesmo quando a permissão de `Microsoft Excel Application` está
-correta.
-
-## Diagnóstico
-
-O erro abaixo indica que a conta que executa o serviço não tem permissão DCOM
-para criar a instância do Excel:
-
-```text
-pywintypes.com_error: (-2147024891, 'Access is denied.', None, None)
-```
-
-Código hexadecimal equivalente: `0x80070005` (`E_ACCESSDENIED`). Verifique,
-nesta ordem:
-
-1. A guia **Log on** do serviço NSSM usa `USACUCAR2000\svc_giautomacao`.
-2. A conta possui **Log on as a service**.
-3. As permissões DCOM locais foram concedidas à conta.
-4. A identidade DCOM não está definida como **The interactive user**.
-5. O serviço foi reiniciado após as alterações.
-6. Após o Excel iniciar, a conta tem acesso ao compartilhamento e às pastas
-   dos workbooks.
-
-Consulte também os eventos DCOM no **Event Viewer** (`Windows Logs > System`)
-para identificar permissões ou AppIDs bloqueados.
-
-## Observação sobre suporte
-
-O Microsoft Office foi concebido para uso interativo. A Microsoft não oferece
-suporte formal à automação não assistida de Office em serviços, DCOM, ASP.NET
-ou processos semelhantes. Portanto, monitore o serviço: caixas de diálogo
-invisíveis, complementos, atualização do Office e ausência de perfil do
-usuário podem causar travamentos.
-
-Referências:
-
-- [Considerations for server-side Automation of Office](https://support.microsoft.com/en-US/Visio/considerations-for-server-side-automation-of-office)
-- [Setting Process-Wide Security Using DCOMCNFG](https://learn.microsoft.com/en-us/windows/win32/com/setting-processwide-security-using-dcomcnfg)
+  `USACUCAR2000\svc_giautomacao`.
