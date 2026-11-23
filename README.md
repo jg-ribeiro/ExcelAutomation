@@ -1,10 +1,6 @@
-# Automação de Excel em modo headless
+# Plataforma Web de Automação do Microsoft Excel (Headless)
 
-Esta aplicação automatiza o Microsoft Excel com Python e `pywin32`. Ela é
-executada sem interface gráfica em uma VM Windows e é registrada como um
-**Windows Service pelo NSSM (Non-Sucking Service Manager)**.
-
-O serviço deve executar usando a conta de domínio dedicada:
+Esta aplicação evoluiu de um script estático para uma **plataforma web completa de gerenciamento e agendamento de automações do Microsoft Excel via COM**. Ela foi projetada para rodar em modo *headless* em uma VM Windows sob a conta de domínio dedicada:
 
 ```text
 USACUCAR2000\svc_giautomacao
@@ -12,25 +8,30 @@ USACUCAR2000\svc_giautomacao
 
 ---
 
-## Camada de Segurança e Resiliência
+## Recursos e Arquitetura
 
-A aplicação conta com uma camada de segurança projetada para impedir travamentos e bloqueios de arquivos:
-
-1. **Eliminação Garantida de Processos Zumbis**:
-   - Cada instância criada via COM tem seu PID do Windows capturado imediatamente.
-   - O encerramento ocorre via Context Manager (`ExcelSession`).
-   - Se o Excel não encerrar normalmente após o grace period (15s), o script executa `kill` forçado **apenas naquele PID específico**.
-2. **Atualização Síncrona das Consultas**:
-   - As conexões Power Query / OLEDB / ODBC têm `BackgroundQuery` forçado para `False`.
-   - Isso elimina qualquer risco de a macro `SalvarTodos` rodar antes do término da atualização dos dados.
-3. **Proteção de Timeout nas Consultas**:
-   - Se a atualização das consultas exceder o tempo limite configurado (`QUERY_REFRESH_TIMEOUT`), a aplicação aborta e elimina o processo, impedindo congelamento por problemas de rede ou banco.
-4. **Guarda de Bloqueio de Arquivo (`file_guard`)**:
-   - Antes de iniciar, verifica se o workbook de rede está livre para gravação. Se outro usuário ou processo estiver com o arquivo aberto, aguarda com retry ou emite diagnóstico claro com o nome do usuário.
-5. **Supressão de Diálogos Modais**:
-   - Além de `DisplayAlerts = False` e `Interactive = False`, uma thread monitora e descarta caixas de diálogo modais invisíveis (`#32770`).
-6. **Blindagem do Agendador**:
-   - Falhas ou exceções em uma execução diária são capturadas e logadas sem interromper o serviço do `scheduler.py` para os dias seguintes.
+1. **Multi-Arquivo e Multi-Agendamento**:
+   - Cadastro dinâmico de planilhas (`.xlsm`, `.xlsx`) via interface web.
+   - Cada arquivo possui sua própria regra de agendamento: **diário em horário fixo** (ex: `03:00`) ou **intervalo recorrente** (ex: a cada `10m`, `30m`, `1h`).
+   - Macros VBA customizadas (ex: `SalvarTodos`) disparadas após a atualização síncrona das consultas.
+2. **Execução Estritamente Serializada (Concorrência = 1)**:
+   - Devido ao comportamento do Excel COM sob contas de serviço no Windows, **apenas 1 instância do Excel é executada por vez**.
+   - Fila FIFO thread-safe (`worker_queue.py`) com bloqueio global: execuções concorrentes aguardam ordeiramente na fila, eliminando travamentos de sessão.
+3. **Persistência em Banco SQLite (`automation.db`)**:
+   - Armazenamento de metadados dos jobs, histórico completo de execuções com durações reais, alertas de sobreposição e snippets de log.
+4. **Detector Inteligente de Sobreposição com Auto-Pause**:
+   - Calcula continuamente a média móvel de duração de cada planilha.
+   - Se a duração média ocupar $\ge 85\%$ do intervalo agendado (ex: job que dura 20 min rodando a cada 10 min), o sistema emite alerta destacado de risco de sobreposição.
+   - Se nenhuma ação corretiva for tomada após 3 ciclos consecutivos de sobreposição (ou prazo limite), o sistema **pausa automaticamente o job** (sem excluí-lo), protegendo o servidor e a fila.
+5. **Visualizador de Logs em Tempo Real (Terminal Escuro)**:
+   - Console estilizado nos padrões do design system (`BulkSendingTerminal`) com streaming contínuo via Server-Sent Events (SSE).
+   - Filtros por nível (INFO, WARN, ERROR, CRITICAL), busca textual, auto-rolagem, cópia e download de logs.
+6. **Interface Moderna em React + TypeScript**:
+   - Desenvolvida com **Vite**, **React 19**, **TypeScript** e **Tailwind CSS**.
+   - Design System corporativo Indoxa: tipografia **Outfit**, paleta **Slate**, cartões brancos com elevação suave e medidores visuais de margem temporal.
+7. **Suporte a Nginx e Servidor Standalone**:
+   - A aplicação pode rodar de forma independente via FastAPI na porta `8000`, servindo os arquivos compilados do React em `frontend/dist`.
+   - Inclui arquivo de configuração pronto para o **Nginx** (`nginx/excel_automation.conf`) na porta `80`.
 
 ---
 
@@ -38,98 +39,84 @@ A aplicação conta com uma camada de segurança projetada para impedir travamen
 
 ```text
 ExcelAutomationVM/
-├── config.py             # Configurações centralizadas (caminhos, timeouts, horários)
-├── excel_manager.py      # Gerenciador de ciclo de vida do Excel (PID, ContextManager, Kill)
-├── file_guard.py         # Verificação de locks de arquivo e detecção de proprietários
-├── runner.py             # Rotina principal de execução com todas as proteções
-├── scheduler.py          # Agendador resiliente diário com heartbeats
-├── requirements.txt      # Dependências (pywin32, schedule)
-└── README.md             # Esta documentação
+├── backend/
+│   ├── app/
+│   │   ├── api/                     # Rotas REST e streaming SSE
+│   │   │   ├── routes_jobs.py       # CRUD de planilhas e disparo manual
+│   │   │   ├── routes_executions.py # Histórico de execuções
+│   │   │   ├── routes_alerts.py     # Alertas de sobreposição e conflito
+│   │   │   ├── routes_logs.py       # Streaming SSE de logs
+│   │   │   └── routes_system.py     # Status da fila e saúde do sistema
+│   │   ├── core/                    # Configurações, modelos e SQLite
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   ├── models.py
+│   │   │   └── log_handler.py
+│   │   ├── engine/                  # Motores de execução
+│   │   │   ├── worker_queue.py      # Fila serializada (Lock global = 1)
+│   │   │   ├── scheduler_service.py # APScheduler dinâmico
+│   │   │   ├── conflict_detector.py # Algoritmo de sobreposição e auto-pause
+│   │   │   └── dynamic_runner.py    # Executor dinâmico integrado a COM
+│   │   └── main.py                  # Aplicação FastAPI
+│   └── tests/                       # Testes unitários e de integração
+├── frontend/                        # Interface React + TypeScript + Vite
+│   ├── src/
+│   │   ├── components/              # Componentes do design system
+│   │   ├── services/api.ts          # Cliente da API
+│   │   ├── types/                   # Tipagens TypeScript
+│   │   └── App.tsx                  # Aplicação principal
+│   └── dist/                        # Build estático de produção
+├── nginx/
+│   └── excel_automation.conf        # Configuração do proxy reverso para Nginx
+├── app_server.py                    # Servidor web unificado (FastAPI + Worker + Scheduler)
+├── excel_manager.py                 # Gerenciador COM com force-kill e watchdog de modais
+├── file_guard.py                    # Verificador de lock de arquivos em rede UNC
+├── requirements.txt                 # Dependências Python atualizadas
+└── automation.db                    # Banco de dados SQLite persistente
 ```
 
 ---
 
-## Pré-requisitos
+## Como Executar
 
-- Microsoft Excel instalado e licenciado na VM.
-- Python e as dependências de `requirements.txt` instaladas.
-- A conta `USACUCAR2000\svc_giautomacao` com acesso ao diretório da aplicação
-  e aos arquivos que serão processados.
-- Permissão de compartilhamento **e** NTFS para a conta no caminho de rede
-  utilizado pelos workbooks, por exemplo `\\usa9fs2\CPC_GI\...`.
-- A conta deve possuir o direito local **Log on as a service**, pois o NSSM a
-  utiliza para executar o processo.
+### 1. Iniciar o Servidor Web e Agendador
 
----
-
-## Configuração do serviço no NSSM
-
-No NSSM, configure o serviço para iniciar o interpretador Python do ambiente
-virtual e informe o script `scheduler.py` (ou `runner.py`) como argumento:
-
-- **Path**: `C:\Auteq\ExcelAutomationVM\.venv\Scripts\python.exe`
-- **Startup directory**: `C:\Auteq\ExcelAutomationVM`
-- **Arguments**: `scheduler.py`
-
-Em **Log on**, selecione a conta:
-
-```text
-USACUCAR2000\svc_giautomacao
-```
-
----
-
-## Execução Manual e Testes
-
-Para testar a automação manualmente via terminal a qualquer momento:
+Execute o servidor unificado:
 
 ```powershell
-# Executa a rotina imediatamente
-.\.venv\Scripts\python.exe runner.py
-
-# Ou inicia o scheduler executando um ciclo de imediato para teste
-.\.venv\Scripts\python.exe scheduler.py --now
+.\.venv\Scripts\python.exe app_server.py
 ```
+
+A aplicação iniciará o Uvicorn, o banco SQLite, a fila serializada e o agendador na porta **8000**:
+- **Interface Web**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Documentação da API (Swagger)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### 2. Executar com Nginx
+
+O Nginx instalado em `C:\nginx` já está configurado para servir a aplicação na porta padrão `80`:
+
+```powershell
+# Iniciar o Nginx
+C:\nginx\nginx.exe -p C:\nginx
+
+# Recarregar configurações se necessário
+C:\nginx\nginx.exe -p C:\nginx -s reload
+```
+
+Com o Nginx ativo, acesse diretamente: [http://localhost](http://localhost)
 
 ---
 
-## Permissões DCOM do Excel
+## Configuração do Serviço no Windows (NSSM)
 
-O Excel é instanciado pela aplicação por meio de COM:
+Para manter o serviço em execução contínua no Windows após reinicializações:
 
-```python
-excel = win32.DispatchEx("Excel.Application")
-```
-
-Para permitir que esse comando funcione a partir do serviço, abra `dcomcnfg`
-como administrador e acesse:
-
-```text
-Component Services
-  > Computers
-  > My Computer
-  > DCOM Config
-  > Microsoft Excel Application
-  > Properties
-```
-
-### Security
-
-Em **Launch and Activation Permissions**, selecione **Customize** e clique em
-**Edit**. Adicione `USACUCAR2000\svc_giautomacao` e permita:
-
-- Local Launch
-- Local Activation
-
-Em **Access Permissions**, também selecione **Customize** e clique em
-**Edit**. Adicione a mesma conta e permita:
-
-- Local Access
-
-### Identity
-
-Em **Identity**, use:
-- **The launching user**: recomendada quando o processo iniciado pelo NSSM já
-  roda como `USACUCAR2000\svc_giautomacao`.
-- **This user**: alternativa para forçar o Excel a sempre iniciar com
-  `USACUCAR2000\svc_giautomacao`.
+1. No NSSM, configure o serviço para executar `app_server.py`:
+   - **Path**: `C:\Auteq\ExcelAutomationVM\.venv\Scripts\python.exe`
+   - **Startup directory**: `C:\Auteq\ExcelAutomationVM`
+   - **Arguments**: `app_server.py`
+2. Na aba **Log on**, configure a conta de serviço:
+   ```text
+   USACUCAR2000\svc_giautomacao
+   ```
+3. Garanta que a conta possua privilégios de **Log on as a service** e permissões DCOM configuradas conforme o manual original.
