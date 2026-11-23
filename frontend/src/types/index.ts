@@ -1,5 +1,25 @@
 export type ScheduleType = 'daily' | 'interval' | 'manual';
 
+export interface User {
+  id: number;
+  username: string;
+  display_name?: string | null;
+  role: 'ADMIN' | 'OPERATOR';
+  is_active: boolean;
+  last_login_at?: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface BootstrapStatus {
+  bootstrap_completed: boolean;
+  initial_admin_user?: string | null;
+}
+
 export interface Job {
   id: number;
   name: string;

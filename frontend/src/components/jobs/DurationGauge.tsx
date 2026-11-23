@@ -64,11 +64,11 @@ export const DurationGauge: React.FC<DurationGaugeProps> = ({
 
   return (
     <div className="w-full space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-600 font-medium">
+      <div className="flex items-center justify-between text-xs gap-2">
+        <span className="text-slate-600 font-medium whitespace-nowrap">
           Duração média: <strong className="text-slate-900">{durText}</strong> / {scheduleValue}
         </span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] border ${badgeTone}`}>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] border whitespace-nowrap ${badgeTone}`}>
           {label} ({percentage}%)
         </span>
       </div>

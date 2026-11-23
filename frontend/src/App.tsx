@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from './services/api';
-import { Job, Execution, Alert, SystemStatus, JobFormData } from './types';
+import { api, authStorage } from './services/api';
+import { Job, Execution, Alert, SystemStatus, JobFormData, User } from './types';
 import { AppHeader } from './components/layout/AppHeader';
 import { KpiCards } from './components/dashboard/KpiCards';
 import { ConflictBanner } from './components/dashboard/ConflictBanner';
@@ -9,9 +9,13 @@ import { JobFormModal } from './components/jobs/JobFormModal';
 import { ExecutionHistory } from './components/history/ExecutionHistory';
 import { LogTerminal } from './components/logs/LogTerminal';
 import { AlertsCenter } from './components/alerts/AlertsCenter';
+import { LoginPage } from './components/auth/LoginPage';
 import { Terminal } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authStorage.getUser());
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -29,6 +33,40 @@ export const App: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Checagem de token e sessão ativa
+  useEffect(() => {
+    const token = authStorage.getToken();
+    if (token) {
+      api.getMe()
+        .then(user => {
+          setCurrentUser(user);
+        })
+        .catch(() => {
+          authStorage.clear();
+          setCurrentUser(null);
+        })
+        .finally(() => {
+          setIsAuthChecking(false);
+        });
+    } else {
+      setIsAuthChecking(false);
+    }
+
+    const handleUnauthorized = () => {
+      setCurrentUser(null);
+      showToast('Sessão expirada. Por favor, entre novamente.', 'error');
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
+  const handleLogout = () => {
+    authStorage.clear();
+    setCurrentUser(null);
+    showToast('Você saiu do sistema com segurança.');
   };
 
   const loadAllData = useCallback(async () => {
@@ -140,6 +178,21 @@ export const App: React.FC = () => {
     }
   };
 
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 font-sans">
+        <div className="flex items-center space-x-2 text-sm">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
+          <span>Verificando credenciais corporativas...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginPage onLoginSuccess={setCurrentUser} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Toast Notification */}
@@ -160,6 +213,8 @@ export const App: React.FC = () => {
         status={status}
         onRefresh={loadAllData}
         isLoading={isLoading}
+        user={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Conteúdo Principal com Container de 80rem */}

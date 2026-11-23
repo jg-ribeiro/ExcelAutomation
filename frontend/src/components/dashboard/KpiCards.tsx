@@ -69,7 +69,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ status, onNavigate }) => {
         className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
             Status da Fila (Excel)
           </span>
           <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -78,21 +78,21 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ status, onNavigate }) => {
         </div>
         <div className="mt-3 flex items-center space-x-2">
           {isRunning ? (
-            <div className="flex items-center space-x-1.5 text-blue-600">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+            <div className="flex items-center space-x-1.5 text-blue-600 whitespace-nowrap">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping shrink-0" />
               <span className="text-sm font-semibold truncate max-w-[170px]">
                 {status?.current_job?.job_name}
               </span>
             </div>
           ) : queueLength > 0 ? (
-            <div className="flex items-center space-x-1.5 text-amber-600">
-              <Clock className="w-4 h-4 animate-spin" />
+            <div className="flex items-center space-x-1.5 text-amber-600 whitespace-nowrap">
+              <Clock className="w-4 h-4 animate-spin shrink-0" />
               <span className="text-sm font-semibold">{queueLength} em espera</span>
             </div>
           ) : (
-            <div className="flex items-center space-x-1.5 text-emerald-600">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="text-sm font-semibold">Fila Vazia (Pronta)</span>
+            <div className="flex items-center space-x-1.5 text-emerald-600 whitespace-nowrap">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-semibold">Fila Livre</span>
             </div>
           )}
         </div>

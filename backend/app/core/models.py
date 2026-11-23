@@ -21,6 +21,18 @@ Base = declarative_base()
 # MODELOS ORM (SQLAlchemy)
 # ==========================================
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    display_name = Column(String(150), nullable=True)
+    role = Column(String(50), nullable=False, default="OPERATOR")  # 'ADMIN' ou 'OPERATOR'
+    is_active = Column(Boolean, default=True, index=True)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
@@ -89,6 +101,29 @@ class SystemSetting(Base):
 # SCHEMAS PYDANTIC (API DTOs)
 # ==========================================
 
+class UserLogin(BaseModel):
+    username: str = Field(..., min_length=2, max_length=100)
+    password: str = Field(..., min_length=1)
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    display_name: Optional[str]
+    role: str
+    is_active: bool
+    last_login_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
 class JobCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     file_path: str = Field(..., min_length=3, max_length=500)
@@ -133,7 +168,7 @@ class JobOut(BaseModel):
     next_run_at: Optional[datetime] = None
     has_conflict: bool = False
     conflict_message: Optional[str] = None
-    duration_ratio: Optional[float] = None  # avg_duration / interval_seconds
+    duration_ratio: Optional[float] = None
 
     class Config:
         from_attributes = True

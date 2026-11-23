@@ -1,7 +1,11 @@
-design_reference/
-
+# Python
 .venv
 __pycache__/
 
-Imagens/
+# Referencias
+design_reference/
+
+# Arquivos de log, e bd
 automation.log
+automation.db
+.env

@@ -29,10 +29,10 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({ alerts, onNaviga
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-sm">
+              <span className="font-bold text-sm whitespace-nowrap">
                 {isAutoPaused ? 'Job Pausado Automaticamente' : 'Risco de Sobreposição Detectado'}
               </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
                 isAutoPaused ? 'bg-rose-200 text-rose-800' : 'bg-amber-200 text-amber-800'
               }`}>
                 {topAlert.job_name || `Job #${topAlert.job_id}`}
