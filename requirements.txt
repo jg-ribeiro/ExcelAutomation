@@ -1,0 +1,2 @@
+pywin32==312
+schedule==1.2.2
