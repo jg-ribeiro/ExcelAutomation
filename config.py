@@ -10,8 +10,8 @@ MACRO_NAME = "SalvarTodos"
 SCHEDULE_TIME = "03:00"
 
 # Timeouts de segurança (em segundos)
-# A consulta demora em média 1 minuto; definimos 600s (10 minutos) como margem segura
-QUERY_REFRESH_TIMEOUT = 600
+# A consulta demora em média 1 minuto; definimos 300s (5 minutos) como margem segura
+QUERY_REFRESH_TIMEOUT = 300
 
 # Tempo de tolerância para fechamento gracioso do Excel antes de forçar o kill (segundos)
 EXCEL_QUIT_GRACE_TIMEOUT = 15

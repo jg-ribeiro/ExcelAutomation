@@ -42,7 +42,6 @@ ExcelAutomationVM/
 ├── excel_manager.py      # Gerenciador de ciclo de vida do Excel (PID, ContextManager, Kill)
 ├── file_guard.py         # Verificação de locks de arquivo e detecção de proprietários
 ├── runner.py             # Rotina principal de execução com todas as proteções
-├── mock_simple.py        # Módulo de compatibilidade (redireciona para runner.py)
 ├── scheduler.py          # Agendador resiliente diário com heartbeats
 ├── requirements.txt      # Dependências (pywin32, schedule)
 └── README.md             # Esta documentação

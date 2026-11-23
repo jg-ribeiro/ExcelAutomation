@@ -1,7 +1,7 @@
+import ctypes
 import gc
 import logging
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -17,6 +17,13 @@ import win32process
 from config import EXCEL_QUIT_GRACE_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
+# Constantes do Windows Kernel32
+kernel32 = ctypes.windll.kernel32
+SYNCHRONIZE = 0x00100000
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+PROCESS_TERMINATE = 0x0001
+WAIT_TIMEOUT = 0x00000102
 
 
 class ExcelSession:
@@ -104,7 +111,7 @@ class ExcelSession:
                             f"[EXCEL-MGR] Diálogo modal detectado no Excel (PID {self.pid}): '{title}'. "
                             f"Enviando comando para fechar o diálogo..."
                         )
-                        # Tenta enviar IDCANCEL ou WM_CLOSE
+                        # Tenta enviar IDCANCEL e WM_CLOSE
                         win32gui.PostMessage(hwnd, win32con.WM_COMMAND, win32con.IDCANCEL, 0)
                         win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
             except Exception:
@@ -157,7 +164,7 @@ class ExcelSession:
                         configured.append(conn_name)
                         logger.info(f"[EXCEL-MGR] Conexão OLEDB '{conn_name}': BackgroundQuery definido como False (Síncrono).")
                 except Exception as e:
-                    # Algumas conexões como ThisWorkbookDataModel lançam erro ao acessar OLEDBConnection
+                    # Conexões internas como ThisWorkbookDataModel lançam exceção ao inspecionar OLEDBConnection
                     logger.debug(f"[EXCEL-MGR] Conexão OLEDB '{conn_name}' não suporta BackgroundQuery direto: {e}")
 
             # xlConnectionTypeODBC = 2
@@ -186,9 +193,7 @@ class ExcelSession:
         timeout_occurred = threading.Event()
 
         def _timeout_watchdog():
-            # Aguarda o timeout especificado
             if not timeout_occurred.wait(timeout_seconds):
-                # Se não foi setado antes do timeout, significa que a query excedeu o tempo limite
                 logger.critical(
                     f"[EXCEL-MGR] ALERTA DE TIMEOUT: A atualização das queries excedeu o limite de {timeout_seconds}s! "
                     f"Encerrando o processo Excel (PID {self.pid}) para proteger o sistema..."
@@ -217,22 +222,6 @@ class ExcelSession:
         self.excel.Run(macro_name)
         elapsed = time.time() - start_time
         logger.info(f"[EXCEL-MGR] Macro '{macro_name}' executada com sucesso em {elapsed:.2f}s.")
-
-    def calculate_and_save(self, stabilization_seconds: int = 5):
-        """Força o recálculo completo de fórmulas e salva o workbook."""
-        if not self.workbook:
-            raise RuntimeError("Nenhum workbook aberto para salvar.")
-
-        logger.info("[EXCEL-MGR] Executando CalculateFullRebuild()...")
-        self.excel.CalculateFullRebuild()
-
-        if stabilization_seconds > 0:
-            logger.info(f"[EXCEL-MGR] Aguardando {stabilization_seconds}s de estabilização pós-cálculo...")
-            time.sleep(stabilization_seconds)
-
-        logger.info("[EXCEL-MGR] Salvando workbook...")
-        self.workbook.Save()
-        logger.info("[EXCEL-MGR] Workbook salvo com sucesso.")
 
     def terminate(self):
         """Encerra a sessão do Excel com garantia de eliminação do processo."""
@@ -299,14 +288,19 @@ class ExcelSession:
 
     @classmethod
     def _force_kill_pid(cls, pid: int):
-        """Mata um processo específico pelo PID usando os.kill e taskkill."""
+        """Mata um processo específico pelo PID usando TerminateProcess e taskkill."""
+        # 1. Tentativa via API Win32 TerminateProcess
         try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
+            handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+            if handle:
+                kernel32.TerminateProcess(handle, 1)
+                kernel32.CloseHandle(handle)
+        except Exception:
             pass
 
         time.sleep(0.5)
 
+        # 2. Se ainda persistir, executa taskkill /F
         if cls._is_process_alive(pid):
             try:
                 subprocess.run(
@@ -326,9 +320,13 @@ class ExcelSession:
 
     @staticmethod
     def _is_process_alive(pid: int) -> bool:
-        """Verifica se um determinado PID ainda está em execução."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
+        """Verifica de forma confiável via Windows API se o PID ainda está em execução."""
+        if not pid:
             return False
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid)
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
