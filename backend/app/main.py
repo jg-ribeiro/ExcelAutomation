@@ -24,6 +24,7 @@ from backend.app.api.routes_alerts import router as alerts_router
 from backend.app.api.routes_logs import router as logs_router
 from backend.app.api.routes_system import router as system_router
 from backend.app.api.routes_auth import router as auth_router
+from backend.app.api.routes_users import router as users_router
 
 # Configuração do Logger
 def setup_logging():
@@ -108,6 +109,7 @@ app.add_middleware(
 
 # Registro dos Routers da API REST
 app.include_router(auth_router)
+app.include_router(users_router)
 app.include_router(jobs_router)
 app.include_router(executions_router)
 app.include_router(alerts_router)

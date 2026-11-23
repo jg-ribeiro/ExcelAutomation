@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   FileSpreadsheet, 
   Lock, 
   User as UserIcon, 
   ArrowRight, 
   AlertCircle, 
-  ShieldCheck, 
   RotateCw 
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { User, BootstrapStatus } from '../../types';
+import { User } from '../../types';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -20,19 +19,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
-
-  useEffect(() => {
-    // Checa se o primeiro administrador já foi provisionado
-    api.getBootstrapStatus()
-      .then(status => {
-        setBootstrap(status);
-        if (!status.bootstrap_completed && status.initial_admin_user) {
-          setUsername(status.initial_admin_user);
-        }
-      })
-      .catch(() => null);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,8 +38,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       setIsLoading(false);
     }
   };
-
-  const isBootstrapPending = bootstrap && !bootstrap.bootstrap_completed;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex flex-col justify-center items-center p-4 relative font-sans text-slate-100">
@@ -76,19 +60,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
         {/* Cartão de Login */}
         <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-7 shadow-2xl space-y-5">
-          {/* Banner de Primeiro Acesso / Bootstrap se pendente */}
-          {isBootstrapPending && (
-            <div className="p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/40 text-blue-200 text-xs flex items-start space-x-2.5">
-              <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-bold text-white block">Configuração Inicial de Administrador</span>
-                <p className="text-[11px] leading-relaxed text-blue-300">
-                  O usuário <strong className="text-white">{bootstrap.initial_admin_user}</strong> definido no ambiente assumirá o perfil de <strong>ADMIN</strong> neste primeiro login validado pelo AD.
-                </p>
-              </div>
-            </div>
-          )}
-
           <div className="border-b border-slate-800 pb-3">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
               Acesso Corporativo (AD)

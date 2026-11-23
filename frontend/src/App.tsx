@@ -10,6 +10,7 @@ import { ExecutionHistory } from './components/history/ExecutionHistory';
 import { LogTerminal } from './components/logs/LogTerminal';
 import { AlertsCenter } from './components/alerts/AlertsCenter';
 import { LoginPage } from './components/auth/LoginPage';
+import { UserManagement } from './components/users/UserManagement';
 import { Terminal } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -360,6 +361,11 @@ export const App: React.FC = () => {
             onResolve={handleResolveAlert}
             onEditJob={handleOpenEditModal}
           />
+        )}
+
+        {/* Aba de Gestão de Usuários (Apenas Administrador) */}
+        {activeTab === 'users' && currentUser?.role === 'ADMIN' && (
+          <UserManagement currentUser={currentUser} />
         )}
       </main>
 

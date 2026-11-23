@@ -34,8 +34,39 @@ def get_bootstrap_status(db: Session = Depends(get_db)):
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     """
     Autentica o usuário no Active Directory da Usina.
-    Aplica mecanismo seguro de bootstrap anti-injeção para o primeiro administrador.
+    Aplica mecanismo de Whitelist: apenas usuários previamente autorizados pelo Admin
+    (ou o Administrador Inicial durante o bootstrap) conseguem acessar.
     """
+    clean_username = normalize_username(payload.username)
+    if not clean_username or not payload.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuário e senha são obrigatórios."
+        )
+
+    # 1. Verifica status do bootstrap
+    bootstrap_setting = db.query(SystemSetting).filter(SystemSetting.key == "bootstrap_completed").first()
+    is_bootstrap_completed = bootstrap_setting is not None and bootstrap_setting.value.lower() == "true"
+    is_initial_bootstrap = (not is_bootstrap_completed) and (clean_username == INITIAL_ADMIN_USER)
+
+    # 2. Verifica se o usuário tem autorização prévia concedida pelo Administrador
+    user = db.query(User).filter(User.username == clean_username).first()
+
+    if not is_initial_bootstrap:
+        if not user:
+            logger.warning(f"[AUTH-BLOCKED] Tentativa de login negada para '{clean_username}': usuário de rede não autorizado.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso não autorizado: Seu usuário de rede não possui permissão para acessar esta aplicação. Solicite liberação a um Administrador."
+            )
+        if not user.is_active:
+            logger.warning(f"[AUTH-BLOCKED] Tentativa de login negada para '{clean_username}': conta desativada.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso bloqueado: Sua conta foi temporariamente desativada pelo Administrador."
+            )
+
+    # 3. Valida credenciais no Active Directory da empresa
     success, clean_username, display_name, err_msg = authenticate_with_ad(
         raw_username=payload.username,
         password=payload.password
@@ -47,61 +78,35 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail=err_msg or "Usuário ou senha incorretos no Active Directory."
         )
 
-    # 1. Verifica se a trava de bootstrap já foi ativada no banco
-    bootstrap_setting = db.query(SystemSetting).filter(SystemSetting.key == "bootstrap_completed").first()
-    is_bootstrap_completed = bootstrap_setting is not None and bootstrap_setting.value.lower() == "true"
-
-    user = db.query(User).filter(User.username == clean_username).first()
-
     now = datetime.utcnow()
 
-    if not user:
-        # Se for um novo usuário, determina o papel inicial
-        assigned_role = "OPERATOR"
-
-        # O primeiro admin só é concedido se o bootstrap AINDA estiver pendente
-        if not is_bootstrap_completed:
-            if clean_username == INITIAL_ADMIN_USER:
-                assigned_role = "ADMIN"
-                # Trava o bootstrap permanentemente no SQLite
-                if not bootstrap_setting:
-                    bootstrap_setting = SystemSetting(
-                        key="bootstrap_completed",
-                        value="true",
-                        description="Indica se o administrador inicial já foi ativado via AD"
-                    )
-                    db.add(bootstrap_setting)
-                else:
-                    bootstrap_setting.value = "true"
-
-                admin_setting = SystemSetting(
-                    key="bootstrap_admin_user",
-                    value=clean_username,
-                    description="Usuário que concluiu o bootstrap inicial"
-                )
-                db.add(admin_setting)
-
-                date_setting = SystemSetting(
-                    key="bootstrap_date",
-                    value=now.isoformat(),
-                    description="Data/hora da conclusão do bootstrap"
-                )
-                db.add(date_setting)
-
-                logger.info(
-                    f"[AUTH] BOOTSTRAP CONCLUÍDO COM SUCESSO: Usuário '{clean_username}' promovido a ADMIN. "
-                    f"A trava de segurança foi ativada. Alterações futuras no .env serão ignoradas."
-                )
-        else:
-            # Bootstrap já foi realizado anteriormente: qualquer novo usuário entra como OPERATOR
-            logger.info(
-                f"[AUTH] Bootstrap já finalizado anteriormente. Novo usuário '{clean_username}' criado como OPERATOR."
+    # 4. Caso seja o primeiro bootstrap, cria o usuário como ADMIN e trava o sistema
+    if is_initial_bootstrap and not user:
+        if not bootstrap_setting:
+            bootstrap_setting = SystemSetting(
+                key="bootstrap_completed",
+                value="true",
+                description="Indica se o administrador inicial já foi ativado via AD"
             )
+            db.add(bootstrap_setting)
+        else:
+            bootstrap_setting.value = "true"
+
+        db.add(SystemSetting(
+            key="bootstrap_admin_user",
+            value=clean_username,
+            description="Usuário que concluiu o bootstrap inicial"
+        ))
+        db.add(SystemSetting(
+            key="bootstrap_date",
+            value=now.isoformat(),
+            description="Data/hora da conclusão do bootstrap"
+        ))
 
         user = User(
             username=clean_username,
             display_name=display_name or clean_username.title(),
-            role=assigned_role,
+            role="ADMIN",
             is_active=True,
             last_login_at=now,
             created_at=now
@@ -110,14 +115,13 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    else:
-        # Usuário já existe
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acesso desativado para este usuário. Contate o administrador."
-            )
+        logger.info(
+            f"[AUTH] BOOTSTRAP CONCLUÍDO COM SUCESSO: Administrador '{clean_username}' ativado. "
+            f"A trava de segurança foi gravada no SQLite."
+        )
 
+    else:
+        # Atualiza último login do usuário autorizado
         user.last_login_at = now
         if display_name and not user.display_name:
             user.display_name = display_name

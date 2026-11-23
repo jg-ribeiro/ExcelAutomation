@@ -28,9 +28,16 @@ class TestAuthAndBootstrap(unittest.TestCase):
 
     def setUp(self):
         self.db = SessionLocal()
+        self._cleanup()
 
     def tearDown(self):
+        self._cleanup()
         self.db.close()
+
+    def _cleanup(self):
+        self.db.query(User).filter(User.username.in_(["admin_teste_1", "hacker_injetado"])).delete()
+        self.db.query(SystemSetting).filter(SystemSetting.key.in_(["bootstrap_completed", "bootstrap_admin_user", "bootstrap_date"])).delete()
+        self.db.commit()
 
     def test_normalize_username(self):
         self.assertEqual(normalize_username("joaoribeiro"), "joaoribeiro")
@@ -77,13 +84,28 @@ class TestAuthAndBootstrap(unittest.TestCase):
         mock_auth.return_value = (True, "hacker_injetado", "Usuario Malicioso", None)
 
         with patch("backend.app.api.routes_auth.INITIAL_ADMIN_USER", "hacker_injetado"):
-            # Faz login com o novo usuário
+            # 2a. Sem autorização prévia da Whitelist, o usuário é totalmente barrado (403 Forbidden)
+            res_blocked = self.client.post("/api/auth/login", json={"username": "hacker_injetado", "password": "valid_password"})
+            self.assertEqual(res_blocked.status_code, 403)
+            self.assertIn("Acesso não autorizado", res_blocked.json()["detail"])
+
+            # 2b. Mesmo que o usuário tenha autorização como OPERATOR, alterar o INITIAL_ADMIN_USER
+            # no .env para o nome dele NÃO o promove a ADMIN, pois o bootstrap está finalizado e travado
+            operator_user = User(
+                username="hacker_injetado",
+                display_name="Operador Comum",
+                role="OPERATOR",
+                is_active=True,
+                created_at=datetime.utcnow()
+            )
+            self.db.add(operator_user)
+            self.db.commit()
+
             res2 = self.client.post("/api/auth/login", json={"username": "hacker_injetado", "password": "valid_password"})
             self.assertEqual(res2.status_code, 200)
             user2_data = res2.json()["user"]
 
-            # PROVA DE SEGURANÇA: Mesmo com INITIAL_ADMIN_USER apontando para ele no .env,
-            # ele NÃO é promovido a ADMIN, pois o bootstrap já está concluído e travado!
+            # PROVA DE SEGURANÇA: Permanece OPERATOR, a trava do SQLite protegeu contra injeção de privilégio!
             self.assertEqual(user2_data["role"], "OPERATOR")
             self.assertNotEqual(user2_data["role"], "ADMIN")
 

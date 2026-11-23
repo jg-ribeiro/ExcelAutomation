@@ -106,6 +106,19 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1)
 
 
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=2, max_length=100)
+    display_name: Optional[str] = None
+    role: str = Field("OPERATOR", pattern="^(ADMIN|OPERATOR)$")
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = Field(None, pattern="^(ADMIN|OPERATOR)$")
+    is_active: Optional[bool] = None
+
+
 class UserOut(BaseModel):
     id: int
     username: str

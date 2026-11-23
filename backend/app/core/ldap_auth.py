@@ -163,3 +163,13 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Exige que o usuário possua papel de Administrador."""
+    if current_user.role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permissão insuficiente. Apenas Administradores podem acessar esta função."
+        )
+    return current_user

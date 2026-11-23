@@ -204,4 +204,54 @@ export const api = {
     if (!res.ok) throw new Error('Falha ao buscar logs');
     return res.json();
   },
+
+  // Gestão de Usuários (Apenas Administrador)
+  async getUsers(): Promise<User[]> {
+    const res = await customFetch('/users');
+    if (!res.ok) throw new Error('Falha ao carregar lista de usuários');
+    return res.json();
+  },
+
+  async authorizeUser(data: { username: string; display_name?: string; role: 'ADMIN' | 'OPERATOR'; is_active?: boolean }): Promise<User> {
+    const res = await customFetch('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao autorizar usuário');
+    }
+    return res.json();
+  },
+
+  async updateUser(id: number, data: { display_name?: string; role?: 'ADMIN' | 'OPERATOR'; is_active?: boolean }): Promise<User> {
+    const res = await customFetch(`/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao atualizar usuário');
+    }
+    return res.json();
+  },
+
+  async deleteUser(id: number): Promise<void> {
+    const res = await customFetch(`/users/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao revogar usuário');
+    }
+  },
+
+  async toggleUserActive(id: number): Promise<{ success: boolean; is_active: boolean; message: string }> {
+    const res = await customFetch(`/users/${id}/toggle-active`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao alterar status do usuário');
+    }
+    return res.json();
+  },
 };

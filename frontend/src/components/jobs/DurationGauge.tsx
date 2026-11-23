@@ -1,4 +1,5 @@
 import React from 'react';
+import { Clock } from 'lucide-react';
 
 interface DurationGaugeProps {
   avgDurationSeconds: number | null | undefined;
@@ -15,9 +16,10 @@ export const DurationGauge: React.FC<DurationGaugeProps> = ({
 }) => {
   if (avgDurationSeconds == null) {
     return (
-      <span className="text-xs text-slate-400 italic">
-        Aguardando execuções para calcular média
-      </span>
+      <div className="flex items-center space-x-1.5 text-xs text-slate-400 italic">
+        <Clock className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+        <span>Aguardando execuções para calcular média</span>
+      </div>
     );
   }
 
@@ -32,9 +34,9 @@ export const DurationGauge: React.FC<DurationGaugeProps> = ({
 
   if (scheduleType !== 'interval' || durationRatio == null) {
     return (
-      <div className="flex items-center space-x-2">
-        <span className="text-xs font-medium text-slate-700">Duração média:</span>
-        <span className="text-xs font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-slate-600 font-medium">Duração média:</span>
+        <span className="font-semibold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
           {durText}
         </span>
       </div>
@@ -64,16 +66,17 @@ export const DurationGauge: React.FC<DurationGaugeProps> = ({
 
   return (
     <div className="w-full space-y-1.5">
-      <div className="flex items-center justify-between text-xs gap-2">
+      <div className="flex items-center justify-between text-xs gap-1.5">
         <span className="text-slate-600 font-medium whitespace-nowrap">
-          Duração média: <strong className="text-slate-900">{durText}</strong> / {scheduleValue}
+          Duração média: <strong className="text-slate-900">{durText}</strong>
+          <span className="text-slate-400 font-normal ml-1">/ {scheduleValue}</span>
         </span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] border whitespace-nowrap ${badgeTone}`}>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] border whitespace-nowrap shrink-0 ${badgeTone}`}>
           {label} ({percentage}%)
         </span>
       </div>
 
-      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+      <div className="w-full h-2 bg-slate-200/70 rounded-full overflow-hidden border border-slate-200">
         <div 
           className={`h-full transition-all duration-500 rounded-full ${barColor}`}
           style={{ width: `${Math.min(percentage, 100)}%` }}

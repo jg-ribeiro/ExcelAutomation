@@ -9,7 +9,8 @@ import {
   LayoutDashboard,
   Layers,
   History,
-  AlertTriangle
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 import { SystemStatus, User } from '../../types';
 
@@ -123,6 +124,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 </span>
               )}
             </button>
+
+            {user?.role === 'ADMIN' && (
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 flex items-center space-x-1.5 ${
+                  activeTab === 'users'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 shrink-0" />
+                <span>Usuários</span>
+              </button>
+            )}
           </nav>
 
           {/* Área da Direita: Status da Fila, Botão Atualizar e Perfil */}
