@@ -61,9 +61,12 @@ class SchedulerService:
             logger.info(f"[SCHEDULER] Job #{job_id} está inativo ou inexistente. Não agendado.")
             return
 
+        job_name = job.name
+        job_id_val = job.id
+
         def _trigger_action():
-            logger.info(f"[SCHEDULER] Gatilho disparado para Job #{job.id} ('{job.name}')!")
-            self.worker_queue.enqueue_job(job.id, trigger_type="schedule")
+            logger.info(f"[SCHEDULER] Gatilho disparado para Job #{job_id_val} ('{job_name}')!")
+            self.worker_queue.enqueue_job(job_id_val, trigger_type="schedule")
 
         try:
             if job.schedule_type == "daily":

@@ -166,10 +166,11 @@ def run_job_now(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job não encontrado.")
 
+    job_name = job.name
     exec_id = worker_queue.enqueue_job(job.id, trigger_type="manual")
     return {
         "success": True,
-        "message": f"Job '{job.name}' colocado na fila de execução com sucesso.",
+        "message": f"Job '{job_name}' colocado na fila de execução com sucesso.",
         "execution_id": exec_id
     }
 

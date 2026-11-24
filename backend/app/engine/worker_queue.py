@@ -64,6 +64,12 @@ class WorkerQueue:
                 logger.error(f"[WORKER-QUEUE] Tentativa de enfileirar job inexistente: ID {job_id}")
                 return None
 
+            job_name = job.name
+            file_path = job.file_path
+            macro_name = job.macro_name
+            query_timeout = job.query_timeout
+            lock_timeout = job.lock_timeout
+
             # Cria registro de execução em estado 'queued'
             execution = Execution(
                 job_id=job.id,
@@ -78,17 +84,17 @@ class WorkerQueue:
             exec_id = execution.id
 
         logger.info(
-            f"[WORKER-QUEUE] Job #{job_id} ('{job.name}') adicionado à fila "
+            f"[WORKER-QUEUE] Job #{job_id} ('{job_name}') adicionado à fila "
             f"(Exec ID: {exec_id}, Disparo: {trigger_type})."
         )
 
         task_data = {
             "job_id": job_id,
-            "job_name": job.name,
-            "file_path": job.file_path,
-            "macro_name": job.macro_name,
-            "query_timeout": job.query_timeout,
-            "lock_timeout": job.lock_timeout,
+            "job_name": job_name,
+            "file_path": file_path,
+            "macro_name": macro_name,
+            "query_timeout": query_timeout,
+            "lock_timeout": lock_timeout,
             "execution_id": exec_id,
             "trigger_type": trigger_type
         }
