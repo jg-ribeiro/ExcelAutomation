@@ -1,4 +1,5 @@
 import win32com.client as win32
+<<<<<<< HEAD
 import logging
 from pathlib import Path
 import sys
@@ -16,6 +17,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+=======
+>>>>>>> origin/main
 
 def listar_conexoes_em_refresh(workbook):
     conexoes = []
@@ -23,7 +26,11 @@ def listar_conexoes_em_refresh(workbook):
     try:
         total = workbook.Connections.Count
     except Exception as e:
+<<<<<<< HEAD
         logger.error(f'Não foi possível acessar as conexões do workbook: {e}')
+=======
+        print('Nâo foi possível acessar as conexões do workbook:', e)
+>>>>>>> origin/main
         return conexoes  # retorna lista vazia
 
     for i in range(1, total + 1):
@@ -50,6 +57,7 @@ def listar_conexoes_em_refresh(workbook):
     return conexoes
 
 
+<<<<<<< HEAD
 def run():
     print('[INFO] - Iniciando automação')
     excel = win32.DispatchEx("Excel.Application")
@@ -98,3 +106,28 @@ def run():
 
 if __name__ == "__main__":
     run()
+=======
+excel = win32.DispatchEx("Excel.Application")
+excel.DisplayAlerts = False
+excel.Visible = False
+
+workbook = excel.Workbooks.Open('P:/02 - Agrícola/01 - Diário/2026/01 - Placar da Moagem/04 - Moagem V2 - Abr.26.xlsm')
+
+workbook.RefreshAll()
+
+while True:
+    conexoes = listar_conexoes_em_refresh(workbook)
+
+    if not conexoes:
+
+        # FORÇA recálculo total (Power Pivot + fórmulas)
+        excel.CalculateFullRebuild()
+
+        excel.Run('SalvarTodos')
+
+        workbook.Save()
+        break
+
+excel.DisplayAlerts = False
+excel.Quit()
+>>>>>>> origin/main
