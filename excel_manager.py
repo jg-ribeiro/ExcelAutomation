@@ -47,13 +47,54 @@ class ExcelSession:
         self._stop_dialog_watchdog = threading.Event()
         self._watchdog_thread: Optional[threading.Thread] = None
 
+    @staticmethod
+    def _get_running_excel_pids() -> set[int]:
+        """Obtém conjunto de PIDs de processos EXCEL.EXE ativos via tasklist."""
+        try:
+            out = subprocess.check_output(
+                ["tasklist", "/FI", "IMAGENAME eq EXCEL.EXE", "/FO", "CSV", "/NH"],
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+            )
+            pids = set()
+            for line in out.strip().splitlines():
+                if line:
+                    parts = line.split(",")
+                    if len(parts) >= 2 and "excel" in parts[0].lower():
+                        clean_pid = parts[1].strip('"').strip()
+                        if clean_pid.isdigit():
+                            pids.add(int(clean_pid))
+            return pids
+        except Exception:
+            return set()
+
     def __enter__(self):
         logger.info("[EXCEL-MGR] Inicializando thread COM e instância do Excel...")
         pythoncom.CoInitialize()
         try:
+            before_pids = self._get_running_excel_pids()
             self.excel = win32.DispatchEx("Excel.Application")
-            self.hwnd = self.excel.Hwnd
-            _, self.pid = win32process.GetWindowThreadProcessId(self.hwnd)
+            after_pids = self._get_running_excel_pids()
+
+            # Captura o PID exato pelo diferencial de processos
+            new_pids = after_pids - before_pids
+            if new_pids:
+                self.pid = next(iter(new_pids))
+            else:
+                try:
+                    hwnd = getattr(self.excel, "Hwnd", 0)
+                    if hwnd:
+                        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                        if pid and pid > 0:
+                            self.pid = pid
+                except Exception:
+                    pass
+
+            try:
+                self.hwnd = getattr(self.excel, "Hwnd", 0)
+            except Exception:
+                self.hwnd = 0
+
             logger.info(f"[EXCEL-MGR] Excel instanciado com sucesso. PID: {self.pid}, HWND: {self.hwnd}")
 
             # Configurações de modo não interativo e seguro
@@ -111,7 +152,8 @@ class ExcelSession:
                             f"[EXCEL-MGR] Diálogo modal detectado no Excel (PID {self.pid}): '{title}'. "
                             f"Enviando comando para fechar o diálogo..."
                         )
-                        # Tenta enviar IDCANCEL e WM_CLOSE
+                        # Tenta enviar IDOK, IDCANCEL e WM_CLOSE
+                        win32gui.PostMessage(hwnd, win32con.WM_COMMAND, win32con.IDOK, 0)
                         win32gui.PostMessage(hwnd, win32con.WM_COMMAND, win32con.IDCANCEL, 0)
                         win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
             except Exception:
@@ -251,9 +293,6 @@ class ExcelSession:
         # 1. Para o monitor de diálogos
         self._stop_dialog_watchdog.set()
 
-        if not self.pid:
-            return
-
         target_pid = self.pid
         logger.info(f"[EXCEL-MGR] Iniciando rotina de encerramento do Excel (PID: {target_pid})...")
 
@@ -286,28 +325,38 @@ class ExcelSession:
         # 4. Libera referências COM do Python
         gc.collect()
 
-        # 5. Aguarda encerramento gracioso dentro do grace_timeout
-        deadline = time.time() + self.grace_timeout
-        while time.time() < deadline:
-            if not self._is_process_alive(target_pid):
-                logger.info(f"[EXCEL-MGR] Processo Excel PID {target_pid} finalizado normalmente.")
-                self.pid = None
-                return
-            time.sleep(1)
+        # 5. Se target_pid for válido, aguarda encerramento gracioso ou executa force kill
+        if target_pid and target_pid > 0:
+            deadline = time.time() + self.grace_timeout
+            while time.time() < deadline:
+                if not self._is_process_alive(target_pid):
+                    logger.info(f"[EXCEL-MGR] Processo Excel PID {target_pid} finalizado normalmente.")
+                    self.pid = None
+                    return
+                time.sleep(1)
 
-        # 6. Se ainda estiver ativo, executa force kill do PID exato
-        logger.warning(
-            f"[EXCEL-MGR] Processo Excel PID {target_pid} não encerrou dentro de {self.grace_timeout}s. "
-            f"Executando encerramento forçado (FORCE KILL)..."
-        )
-        self._force_kill_pid(target_pid)
-        self.pid = None
+            # 6. Se ainda estiver ativo, executa force kill do PID exato
+            logger.warning(
+                f"[EXCEL-MGR] Processo Excel PID {target_pid} não encerrou dentro de {self.grace_timeout}s. "
+                f"Executando encerramento forçado (FORCE KILL)..."
+            )
+            self._force_kill_pid(target_pid)
+            self.pid = None
 
     def force_kill(self):
         """Força a terminação imediata do processo Excel deste gerenciador."""
-        if self.pid:
+        if self.pid and self.pid > 0:
+            logger.warning(f"[EXCEL-MGR] Executando force kill no PID {self.pid}...")
             self._force_kill_pid(self.pid)
             self.pid = None
+        else:
+            logger.warning("[EXCEL-MGR] PID inválido ou não detectado para force kill direto. Tentando fechar via COM...")
+            try:
+                if self.excel:
+                    self.excel.DisplayAlerts = False
+                    self.excel.Quit()
+            except Exception:
+                pass
 
     @classmethod
     def _force_kill_pid(cls, pid: int):

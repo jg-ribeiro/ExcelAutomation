@@ -1,4 +1,5 @@
 import logging
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,29 @@ from file_guard import wait_for_file_availability, get_file_owner_info
 from backend.app.core.config import DEFAULT_FILE_LOCK_INTERVAL
 
 logger = logging.getLogger("ExcelAutomation")
+
+
+def ensure_network_drives():
+    r"""Garante que a unidade P: esteja mapeada para \\usa9fs2\CPC_GI caso macros VBA dependam de P:."""
+    try:
+        p_drive = Path("P:/")
+        if not p_drive.exists():
+            logger.info("[NETWORK-DRIVE] Unidade P: não detectada na sessão. Mapeando P: -> \\\\usa9fs2\\CPC_GI...")
+            res = subprocess.run(
+                ["net", "use", "P:", r"\\usa9fs2\CPC_GI", "/persistent:no"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+            )
+            if Path("P:/").exists():
+                logger.info("[NETWORK-DRIVE] Unidade P: mapeada com sucesso.")
+            else:
+                logger.warning(f"[NETWORK-DRIVE] Tentativa de mapear P: falhou: {res.stderr.strip()}")
+        else:
+            logger.debug("[NETWORK-DRIVE] Unidade P: já está acessível.")
+    except Exception as e:
+        logger.warning(f"[NETWORK-DRIVE] Falha ao verificar/mapear unidade P: {e}")
 
 
 def execute_job(
@@ -51,6 +75,9 @@ def execute_job(
     _log(f"    Macro: {macro_name or '(Nenhuma)'}")
     _log(f"    Timeout Consulta: {query_timeout}s | Timeout Lock: {lock_timeout}s")
     _log("================================================================================")
+
+    # 0. Garante mapeamento de unidades de rede (ex: P:) necessárias para macros
+    ensure_network_drives()
 
     target_path = Path(file_path)
 
