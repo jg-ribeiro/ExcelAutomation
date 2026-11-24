@@ -119,7 +119,8 @@ app.include_router(system_router)
 # Suporte condicional para servir o frontend compilado via Python (parametrizado via SERVE_STATIC no .env)
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 if SERVE_STATIC and FRONTEND_DIST.exists():
-    app_logger.info("[HTTP] SERVE_STATIC=True: FastAPI montando arquivos estáticos de frontend/dist na raiz.")
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+    app_logger.info("[HTTP] SERVE_STATIC=True: FastAPI montando arquivos estáticos de frontend/dist.")
+    app.mount("/excel-automation", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend_subpath")
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend_root")
 else:
     app_logger.info("[HTTP] SERVE_STATIC=False: FastAPI operando estritamente como API REST (entrega estática pelo Nginx).")

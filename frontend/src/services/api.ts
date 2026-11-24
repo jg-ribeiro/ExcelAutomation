@@ -10,7 +10,11 @@ import {
   BootstrapStatus 
 } from '../types';
 
-const API_BASE = '/api';
+// Base URL dinâmica com suporte ao subdiretório de proxy reverso (ex: /excel-automation/)
+const rawBase = import.meta.env.BASE_URL || '/';
+const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+export const API_BASE = `${normalizedBase}api`.replace(/\/+/g, '/');
+
 const TOKEN_KEY = 'excel_auto_token';
 const USER_KEY = 'excel_auto_user';
 
