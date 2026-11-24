@@ -20,6 +20,10 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # Controle de Entrega de Arquivos Estáticos pelo Python
 SERVE_STATIC = os.getenv("SERVE_STATIC", "true").strip().lower() in ("true", "1", "yes")
 
+# Porta e Host de Operação do Servidor Web
+SERVER_PORT = int(os.getenv("PORT") or os.getenv("SERVER_PORT") or "8000")
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+
 # Configurações do Active Directory (LDAP) da Usina
 LDAP_SERVER = os.getenv("LDAP_SERVER", "USA9AD2.usacucar.com.br")
 LDAP_PORT = int(os.getenv("LDAP_PORT", "389"))

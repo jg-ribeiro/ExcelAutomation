@@ -77,6 +77,23 @@ ExcelAutomationVM/
 
 ---
 
+## Configuração de Ambiente (.env)
+
+A aplicação lê automaticamente as configurações do arquivo [.env](file:///c:/Auteq/ExcelAutomationVM/.env) na raiz do projeto:
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `PORT` | `8000` | **Porta TCP de operação do servidor web** |
+| `SERVER_HOST` | `0.0.0.0` | Endereço IP / interface de escuta do servidor |
+| `SERVE_STATIC` | `true` | Se `true`, o Python/FastAPI serve os arquivos do frontend compilados em `frontend/dist`. Se `false`, atua puramente como API REST (ideal com Nginx) |
+| `LDAP_SERVER` | `USA9AD2.usacucar.com.br` | Endereço do controlador de domínio do Active Directory |
+| `LDAP_PORT` | `389` | Porta de conexão LDAP do Active Directory |
+| `LDAP_BASE_DN` | `DC=usacucar,DC=com,DC=br` | Base DN corporativo para pesquisas no AD |
+| `INITIAL_ADMIN_USER` | `joaoribeiro` | Usuário de rede que assume o perfil de Administrador no primeiro acesso (bootstrap) |
+| `JWT_EXPIRATION_HOURS` | `8` | Tempo de validade do token de sessão de cada usuário |
+
+---
+
 ## Como Executar
 
 ### 1. Iniciar o Servidor Web e Agendador
@@ -87,7 +104,7 @@ Execute o servidor unificado:
 .\.venv\Scripts\python.exe app_server.py
 ```
 
-A aplicação iniciará o Uvicorn, o banco SQLite, a fila serializada e o agendador na porta **8000**:
+A aplicação iniciará o Uvicorn, o banco SQLite, a fila serializada e o agendador na porta configurada no `.env` (padrão **8000**):
 - **Interface Web**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
 - **Documentação da API (Swagger)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
