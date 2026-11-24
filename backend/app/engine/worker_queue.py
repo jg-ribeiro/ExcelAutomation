@@ -31,8 +31,27 @@ class WorkerQueue:
     def set_scheduler_service(self, scheduler):
         self._scheduler_service = scheduler
 
+    def _reconcile_orphaned_executions(self):
+        """Marca execuções deixadas em 'running' ou 'queued' de inicializações anteriores como 'failed'."""
+        try:
+            with SessionLocal() as db:
+                orphaned = db.query(Execution).filter(Execution.status.in_(["running", "queued"])).all()
+                if orphaned:
+                    logger.warning(
+                        f"[WORKER-QUEUE] Encontradas {len(orphaned)} execução(ões) órfãs de sessões anteriores. Reconciliando..."
+                    )
+                    for exec_item in orphaned:
+                        exec_item.status = "failed"
+                        exec_item.finished_at = datetime.utcnow()
+                        exec_item.error_message = "Execução interrompida pela reinicialização do servidor."
+                    db.commit()
+        except Exception as e:
+            logger.error(f"[WORKER-QUEUE] Erro ao reconciliar execuções órfãs na inicialização: {e}", exc_info=True)
+
     def start(self):
         """Inicia a thread consumidora da fila."""
+        self._reconcile_orphaned_executions()
+
         if self._worker_thread and self._worker_thread.is_alive():
             return
 
@@ -132,15 +151,26 @@ class WorkerQueue:
                         execution.started_at = datetime.utcnow()
                         db.commit()
 
-                # Executa o ciclo dinâmico do Excel
-                result = execute_job(
-                    job_id=job_id,
-                    job_name=job_name,
-                    file_path=task["file_path"],
-                    macro_name=task["macro_name"],
-                    query_timeout=task["query_timeout"],
-                    lock_timeout=task["lock_timeout"]
-                )
+                try:
+                    # Executa o ciclo dinâmico do Excel
+                    result = execute_job(
+                        job_id=job_id,
+                        job_name=job_name,
+                        file_path=task["file_path"],
+                        macro_name=task["macro_name"],
+                        query_timeout=task["query_timeout"],
+                        lock_timeout=task["lock_timeout"]
+                    )
+                except Exception as ex:
+                    logger.critical(f"[WORKER-QUEUE] Erro crítico no runner do Job #{job_id}: {ex}", exc_info=True)
+                    result = {
+                        "success": False,
+                        "status": "failed",
+                        "duration": 0.0,
+                        "pid": None,
+                        "error": f"Erro crítico inesperado durante execução: {str(ex)}",
+                        "log_snippet": f"Erro crítico inesperado durante execução: {str(ex)}"
+                    }
 
                 # Persiste resultado da execução
                 with SessionLocal() as db:

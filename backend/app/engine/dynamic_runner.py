@@ -10,7 +10,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from excel_manager import ExcelSession
-from file_guard import wait_for_file_availability
+from file_guard import wait_for_file_availability, get_file_owner_info
 from backend.app.core.config import DEFAULT_FILE_LOCK_INTERVAL
 
 logger = logging.getLogger("ExcelAutomation")
@@ -56,12 +56,29 @@ def execute_job(
 
     # 1. Verificação de existência e lock do arquivo
     _log(f"[PASSO 1/5] Verificando disponibilidade e locks do arquivo: {target_path.name}...")
+    if not target_path.exists():
+        err_msg = (
+            f"Arquivo não encontrado ou inacessível no caminho: {file_path}. "
+            f"Verifique se o compartilhamento de rede está ativo e se a conta do serviço tem permissão de acesso à pasta."
+        )
+        _log(err_msg, "error")
+        total_time = time.time() - start_time
+        return {
+            "success": False,
+            "status": "failed",
+            "duration": total_time,
+            "pid": None,
+            "error": err_msg,
+            "log_snippet": "\n".join(log_messages)
+        }
+
     if not wait_for_file_availability(
         file_path,
         timeout=lock_timeout,
         interval=DEFAULT_FILE_LOCK_INTERVAL
     ):
-        err_msg = f"Arquivo indisponível ou retido por outro processo após {lock_timeout}s: {file_path}"
+        owner_info = get_file_owner_info(target_path)
+        err_msg = f"Arquivo retido por outro processo após {lock_timeout}s: {target_path.name}. {owner_info}"
         _log(err_msg, "critical")
         total_time = time.time() - start_time
         return {
@@ -99,8 +116,9 @@ def execute_job(
             time.sleep(10)
 
             if macro_name and macro_name.strip():
-                _log(f"    -> Disparando macro: '{macro_name}'...")
-                session.run_macro(macro_name.strip())
+                macro_timeout = max(query_timeout, 300)
+                _log(f"    -> Disparando macro: '{macro_name}' (timeout: {macro_timeout}s)...")
+                session.run_macro(macro_name.strip(), timeout_seconds=macro_timeout)
 
             _log("    -> Salvando o workbook no disco...")
             session.workbook.Save()

@@ -16,7 +16,7 @@ import win32process
 
 from config import EXCEL_QUIT_GRACE_TIMEOUT
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ExcelAutomation")
 
 # Constantes do Windows Kernel32
 kernel32 = ctypes.windll.kernel32
@@ -215,13 +215,36 @@ class ExcelSession:
             logger.error(f"[EXCEL-MGR] Erro durante o RefreshAll após {elapsed:.2f}s: {e}", exc_info=True)
             raise
 
-    def run_macro(self, macro_name: str):
-        """Executa uma macro VBA no workbook."""
-        logger.info(f"[EXCEL-MGR] Executando macro: '{macro_name}'...")
+    def run_macro(self, macro_name: str, timeout_seconds: int = 300):
+        """
+        Executa uma macro VBA no workbook com proteção de timeout.
+        Se a macro travar ou exceder o tempo limite, o processo Excel é forçado a encerrar.
+        """
+        logger.info(f"[EXCEL-MGR] Executando macro: '{macro_name}' (Timeout: {timeout_seconds}s)...")
+        timeout_occurred = threading.Event()
+
+        def _macro_timeout_watchdog():
+            if not timeout_occurred.wait(timeout_seconds):
+                logger.critical(
+                    f"[EXCEL-MGR] ALERTA DE TIMEOUT: A execução da macro '{macro_name}' excedeu o limite de {timeout_seconds}s! "
+                    f"Encerrando o processo Excel (PID {self.pid}) para proteger o sistema..."
+                )
+                self.force_kill()
+
+        watchdog = threading.Thread(target=_macro_timeout_watchdog, daemon=True, name="MacroTimeoutWatchdog")
+        watchdog.start()
+
         start_time = time.time()
-        self.excel.Run(macro_name)
-        elapsed = time.time() - start_time
-        logger.info(f"[EXCEL-MGR] Macro '{macro_name}' executada com sucesso em {elapsed:.2f}s.")
+        try:
+            self.excel.Run(macro_name)
+            timeout_occurred.set()
+            elapsed = time.time() - start_time
+            logger.info(f"[EXCEL-MGR] Macro '{macro_name}' executada com sucesso em {elapsed:.2f}s.")
+        except Exception as e:
+            timeout_occurred.set()
+            elapsed = time.time() - start_time
+            logger.error(f"[EXCEL-MGR] Erro durante a execução da macro '{macro_name}' após {elapsed:.2f}s: {e}", exc_info=True)
+            raise
 
     def terminate(self):
         """Encerra a sessão do Excel com garantia de eliminação do processo."""

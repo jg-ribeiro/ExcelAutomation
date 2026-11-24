@@ -2,7 +2,7 @@ import logging
 import time
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ExcelAutomation")
 
 
 def get_file_owner_info(file_path: Path) -> str:
@@ -53,7 +53,7 @@ def wait_for_file_availability(file_path: str | Path, timeout: int = 120, interv
     path = Path(file_path)
 
     if not path.exists():
-        logger.error(f"[LOCK-GUARD] Arquivo não encontrado no caminho: {path}")
+        logger.error(f"[LOCK-GUARD] Arquivo não encontrado ou inacessível no caminho: {path}")
         return False
 
     if not is_file_locked(path):
